@@ -1,10 +1,366 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
-    <title>Ultima Dashboard Test</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ultima Dashboard</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-auth-compat.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
 </head>
-<body>
-    <h1>Привет! Дашборд работает!</h1>
-    <p>Если ты видишь это сообщение, GitHub Pages настроен правильно.</p>
+<body class="bg-gray-50">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        const { 
+            Save, Download, Trophy, Users, Target, CheckSquare, 
+            MessageSquare, FileText, TrendingUp, Award, Info, 
+            Filter, Eye, Shield, Cloud, Wifi, AlertCircle 
+        } = lucide;
+
+        // Firebase Configuration
+        const firebaseConfig = {
+          apiKey: "AIzaSyB_ocCyZnuP4bODKjR9sASUI93YrpVKg64",
+          authDomain: "ultima-dashboard.firebaseapp.com",
+          databaseURL: "https://ultima-dashboard-default-rtdb.europe-west1.firebasedatabase.app",
+          projectId: "ultima-dashboard",
+          storageBucket: "ultima-dashboard.firebasestorage.app",
+          messagingSenderId: "1000478819468",
+          appId: "1:1000478819468:web:c33b8ba9ab4db411a6e7a9",
+          measurementId: "G-0VQQ6TW0XW"
+        };
+
+        // Firebase Database Manager
+        class FirebaseDB {
+          constructor() {
+            this.app = null;
+            this.database = null;
+            this.auth = null;
+            this.listeners = [];
+            this.initialized = false;
+            this.initPromise = null;
+          }
+
+          async init() {
+            if (this.initPromise) {
+              return this.initPromise;
+            }
+            this.initPromise = this._initInternal();
+            return this.initPromise;
+          }
+
+          async _initInternal() {
+            if (typeof window !== 'undefined' && !this.initialized) {
+              try {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                if (!window.firebase) {
+                  throw new Error('Firebase failed to load');
+                }
+                
+                this.app = window.firebase.initializeApp(firebaseConfig);
+                this.database = window.firebase.database();
+                this.auth = window.firebase.auth();
+                this.initialized = true;
+                
+                console.log('Firebase initialized successfully');
+              } catch (error) {
+                console.error('Firebase initialization failed:', error);
+                throw error;
+              }
+            }
+          }
+
+          async login(email, password) {
+            try {
+              await this.auth.signInWithEmailAndPassword(email, password);
+              return { success: true };
+            } catch (error) {
+              return { success: false, error: error.message };
+            }
+          }
+
+          async logout() {
+            try {
+              await this.auth.signOut();
+            } catch (error) {
+              console.error('Logout error:', error);
+            }
+          }
+
+          async checkAdminStatus(uid) {
+            if (!this.database) return false;
+            try {
+              const snapshot = await this.database.ref(`admins/${uid}`).once('value');
+              return snapshot.val() === true;
+            } catch (error) {
+              console.error('Admin check error:', error);
+              return false;
+            }
+          }
+
+          listen(path, callback) {
+            if (!this.database) return;
+            const ref = this.database.ref(path);
+            ref.on('value', callback);
+            this.listeners.push({ path, callback, ref });
+          }
+
+          unlisten(path, callback) {
+            this.listeners = this.listeners.filter((listener) => {
+              const match = listener.path === path && (!callback || listener.callback === callback);
+              if (match) {
+                listener.ref.off('value', listener.callback);
+              }
+              return !match;
+            });
+          }
+
+          async save(path, data) {
+            if (!this.database) {
+              return { success: false, error: 'Database not initialized' };
+            }
+            try {
+              await this.database.ref(path).set(data);
+              return { success: true };
+            } catch (error) {
+              return { success: false, error: error.message };
+            }
+          }
+        }
+
+        const firebaseDB = new FirebaseDB();
+
+        // Auth Component
+        function AuthForm({ onGuestAccess }) {
+          const [email, setEmail] = useState('');
+          const [password, setPassword] = useState('');
+          const [loading, setLoading] = useState(false);
+          const [error, setError] = useState('');
+
+          const handleLogin = async (e) => {
+            e.preventDefault();
+            setLoading(true);
+            setError('');
+
+            const result = await firebaseDB.login(email, password);
+            if (!result.success) {
+              setError(result.error);
+            }
+            setLoading(false);
+          };
+
+          return (
+            <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-purple-900">
+              <div className="max-w-md w-full space-y-8 p-8 bg-slate-800 rounded-lg shadow-lg border border-slate-700">
+                <div>
+                  <h2 className="mt-6 text-center text-3xl font-extrabold text-purple-300">
+                    Ultima Dashboard
+                  </h2>
+                  <p className="mt-2 text-center text-sm text-gray-400">
+                    Рейтинг участников 8 сезона
+                  </p>
+                </div>
+                
+                <div className="text-center">
+                  <button
+                    onClick={onGuestAccess}
+                    className="w-full flex justify-center py-3 px-4 border border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-300 bg-slate-700 hover:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors"
+                  >
+                    <Eye className="w-4 h-4 mr-2" />
+                    Войти как зритель (только просмотр)
+                  </button>
+                </div>
+                
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-gray-600"></div>
+                  </div>
+                  <div className="relative flex justify-center text-sm">
+                    <span className="px-2 bg-slate-800 text-gray-400">или</span>
+                  </div>
+                </div>
+
+                <form className="space-y-6" onSubmit={handleLogin}>
+                  <div className="text-center text-sm text-gray-300">
+                    Вход для администраторов
+                  </div>
+                  {error && (
+                    <div className="bg-red-900/20 border border-red-500/20 text-red-300 px-4 py-3 rounded">
+                      {error}
+                    </div>
+                  )}
+                  <div>
+                    <input
+                      type="email"
+                      required
+                      className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 text-white"
+                      placeholder="Email администратора"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <input
+                      type="password"
+                      required
+                      className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 text-white"
+                      placeholder="Пароль"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50"
+                  >
+                    <Shield className="w-4 h-4 mr-2" />
+                    {loading ? 'Вход...' : 'Войти как админ'}
+                  </button>
+                </form>
+                
+                <div className="text-xs text-gray-500 text-center">
+                  В режиме зрителя доступен только просмотр данных
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        // Simplified Dashboard Component
+        function SimpleDashboard() {
+          const [user, setUser] = useState(null);
+          const [isAdmin, setIsAdmin] = useState(false);
+          const [isGuest, setIsGuest] = useState(false);
+          const [authLoading, setAuthLoading] = useState(true);
+
+          const handleGuestAccess = () => {
+            setIsGuest(true);
+            setAuthLoading(false);
+          };
+
+          useEffect(() => {
+            const initAuth = async () => {
+              try {
+                await firebaseDB.init();
+                
+                if (!firebaseDB.auth) {
+                  setAuthLoading(false);
+                  return;
+                }
+                
+                firebaseDB.auth.onAuthStateChanged(async (user) => {
+                  setUser(user);
+                  if (user) {
+                    const adminStatus = await firebaseDB.checkAdminStatus(user.uid);
+                    setIsAdmin(adminStatus);
+                  } else {
+                    setIsAdmin(false);
+                  }
+                  setAuthLoading(false);
+                });
+              } catch (error) {
+                console.error('Auth initialization failed:', error);
+                setAuthLoading(false);
+              }
+            };
+
+            initAuth();
+          }, []);
+
+          if (authLoading) {
+            return (
+              <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-purple-900">
+                <div className="text-lg text-white">Загрузка...</div>
+              </div>
+            );
+          }
+
+          if (!user && !isGuest) {
+            return <AuthForm onGuestAccess={handleGuestAccess} />;
+          }
+
+          return (
+            <div className="min-h-screen bg-gradient-to-br from-slate-900 to-purple-900 text-white p-4">
+              <div className="max-w-6xl mx-auto">
+                <div className="text-center">
+                  <h1 className="text-4xl font-bold text-purple-300 mb-4">Ultima Dashboard</h1>
+                  <p className="text-xl text-gray-300 mb-8">Рейтинг участников 8 сезона</p>
+                  
+                  {isAdmin && (
+                    <div className="bg-green-900/20 border border-green-500/20 rounded-lg p-4 mb-8">
+                      <Shield className="w-8 h-8 text-green-400 mx-auto mb-2" />
+                      <h3 className="font-bold text-green-300 mb-2">Режим администратора</h3>
+                      <p className="text-sm text-gray-300">
+                        Добро пожаловать, {user.email}! У вас есть права редактирования.
+                      </p>
+                    </div>
+                  )}
+                  
+                  {isGuest && (
+                    <div className="bg-blue-900/20 border border-blue-500/20 rounded-lg p-4 mb-8">
+                      <Eye className="w-8 h-8 text-blue-400 mx-auto mb-2" />
+                      <h3 className="font-bold text-blue-300 mb-2">Гостевой режим</h3>
+                      <p className="text-sm text-gray-300">
+                        Вы просматриваете дашборд в режиме только для чтения.
+                      </p>
+                    </div>
+                  )}
+                  
+                  <div className="bg-slate-800/50 rounded-xl p-8">
+                    <h2 className="text-2xl font-bold mb-4">Дашборд успешно загружен!</h2>
+                    <p className="text-gray-300 mb-6">
+                      Система трекинга участников Ultima работает корректно. 
+                      Firebase подключен и готов к использованию.
+                    </p>
+                    
+                    <div className="grid md:grid-cols-3 gap-4 text-center">
+                      <div className="bg-slate-700/30 rounded-lg p-4">
+                        <Trophy className="w-8 h-8 text-yellow-500 mx-auto mb-2" />
+                        <h3 className="font-semibold">Рейтинги групп</h3>
+                        <p className="text-sm text-gray-400">Сравнение результатов</p>
+                      </div>
+                      
+                      <div className="bg-slate-700/30 rounded-lg p-4">
+                        <Users className="w-8 h-8 text-blue-500 mx-auto mb-2" />
+                        <h3 className="font-semibold">43 участника</h3>
+                        <p className="text-sm text-gray-400">Отслеживание прогресса</p>
+                      </div>
+                      
+                      <div className="bg-slate-700/30 rounded-lg p-4">
+                        <Target className="w-8 h-8 text-green-500 mx-auto mb-2" />
+                        <h3 className="font-semibold">10 недель</h3>
+                        <p className="text-sm text-gray-400">Система оценки</p>
+                      </div>
+                    </div>
+                    
+                    <button
+                      onClick={() => {
+                        if (isGuest) {
+                          window.location.reload();
+                        } else {
+                          firebaseDB.logout();
+                        }
+                      }}
+                      className="mt-6 px-6 py-2 bg-slate-600 hover:bg-slate-700 rounded-lg transition-colors"
+                    >
+                      Выйти
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        ReactDOM.render(<SimpleDashboard />, document.getElementById('root'));
+    </script>
 </body>
 </html>
